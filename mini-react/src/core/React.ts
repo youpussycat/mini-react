@@ -27,7 +27,7 @@ export const createElement = (type: string, props: any, ...children: IReactNode[
     };
 }
 /**
- * 将虚拟节点生成真实节点，并挂载到容器上
+ * 将虚拟节点生成真实节点，并挂载到容器上【递归处理】
  * @param element 虚拟 dom 
  * @param container 容器真实 dom 
  */
@@ -40,11 +40,11 @@ export const render = (element: IReactNode, container: Element) => {
     else if (element.type === 'TEXT_ELEMENT') { // 生成文本节点
         dom = document.createTextNode("");
         dom.nodeValue = element?.props?.nodeValue;
-    } else { // 普通虚拟 dom 生成真实 dom 并进行 attribute 设置，子节点挂载
+    } else { // 递归 普通虚拟 dom 生成真实 dom 并进行 attribute 设置，子节点挂载
         dom = document.createElement(element.type);
         Object.keys(element.props).forEach(item => {
             if (item !== 'children')
-            (dom as Element).setAttribute(item, element.props[item]);
+                (dom as Element).setAttribute(item, element.props[item]);
         });
         element.props?.children?.forEach(item => render(item, dom as Element));
     }
