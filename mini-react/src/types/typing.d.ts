@@ -11,3 +11,11 @@ export declare interface IReactDOMNode {
 }
 /**  React 节点类型 */
 export declare type  IReactNode = IReactDOMNode | string;
+/** fiber 节点数据类型 */
+export declare interface IFiberNode {
+    parent?: null | IFiberNode;
+    sibling?: null | IFiberNode;
+    props?: IReactDOMNode['props'];
+    child?: null | IFiberNode;
+    dom?: Node | null;
+}
