@@ -1,7 +1,7 @@
 /** 虚拟节点类型 */
 export declare interface IReactDOMNode {
     /** 虚拟节点类型 */
-    type: string;
+    type: string | Function;
     /** 虚拟节点参数 */
     props: {
         /** 虚拟子节点列表 */
@@ -18,4 +18,5 @@ export declare interface IFiberNode {
     props?: IReactDOMNode['props'];
     child?: null | IFiberNode;
     dom?: Node | null;
+    type?: null | Function | string;
 }

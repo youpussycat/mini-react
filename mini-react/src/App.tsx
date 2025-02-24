@@ -15,6 +15,23 @@ const App = React.createElement(
         '我更爱大家'
     )
 );
+const FCom = () => (
+    <div>
+        1
+        <div>
+            2
+        </div>
+        3
+        <div>
+            4 
+            <div>
+                5
+            </div>
+            6
+        </div>
+        7
+    </div>
+)
 const App2 = (
     <div>
         111
@@ -25,6 +42,7 @@ const App2 = (
             <div>test3<div>test3<div>test3</div></div></div>
         </div>
         111111
+        <FCom />
         wq
     </div>
 )

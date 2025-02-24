@@ -32,7 +32,7 @@ export const createTextNode = (value: string): IReactNode => {
  * @param children 虚拟子节点列表
  * @returns 虚拟节点
  */
-export const createElement = (type: string, props: any, ...children: IReactNode[]): IReactDOMNode => {
+export const createElement = (type: string | Function, props: any, ...children: IReactNode[]): IReactDOMNode => {
     return {
         type,
         props: {
@@ -82,7 +82,56 @@ function updateProps(dom: Node, props: any) {
             (dom as Element).setAttribute(item, props[item]);
     });
 }
+/**
+ * 将子节点列表生成对应的 fiber 节点，并与父节点 fiber 结合串成链表
+ * @param fiber 父节点的 fiber 节点
+ * @param children 要处理的子节点列表
+ */
+function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
+    let prevChild: IFiberNode | null = null;
+    children?.forEach((child, index) => {
+        const newFiber = {
+            type: child.type,
+            props: child.props,
+            child: null,
+            parent: fiber,
+            sibling: null,
+            dom: null,
+        };
 
+        if (index === 0) {
+            fiber.child = newFiber;
+        } else {
+            prevChild!.sibling = newFiber;
+        }
+        prevChild = newFiber;
+    });
+}
+/**
+ * 给函数组件的 fiber 节点的返回值【虚拟 DOM 结构】生成对应的 fiber 链表
+ * @param fiber 要函数组件的 fiber 节点
+ */
+function updateFunctionComponent(fiber: IFiberNode) {
+    /** 函数组件的返回值 虚拟 DOM 结构 */
+    const children = [(fiber.type as Function)?.(fiber.props)];
+    // 生成链表
+    initChildren(fiber, children);
+}
+/**
+ * 根据非函数组件的 fiber 节点生成该节点对应的真实 dom ，并给子节点列表生成 fiber 链表
+ * @param fiber 要生成真实节点的 fiber 节点
+ */
+function updateHostComponent(fiber: IFiberNode) {
+    if (!fiber.dom) { // 根据类型创建 空白 dom 节点
+        const dom = (fiber.dom = createNode(fiber.type as string));
+        // 挂载属性
+        updateProps(dom, fiber.props);
+    }
+    /** 要生成 fiber 的虚拟节点列表 */
+    const children = fiber.props?.children;
+    // 生成子节点列表对应的 fiber 链表
+    initChildren(fiber, children || []);
+}
 /**
  * fiber 框架单个任务执行过程：根据虚拟节点创建 fiber 节点链表的同时生成对应真实 dom 
  * 
@@ -93,34 +142,17 @@ function updateProps(dom: Node, props: any) {
  */
 function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
     if (!fiber) return null;
-    /** 最终虚拟 dom 对应的真实 dom */
-    let dom: Node | null = null;
-    const { props, parent } = fiber;
-    let preFiber: IFiberNode | null = null;
-    // 根据当前 fiber 创建后续 fiber 链表
-    props?.children?.forEach((child: IReactDOMNode, index) => {
-        const { type, props } = child;
-        dom = createNode(type);
-        updateProps(dom, props);
-        const newFiber: IFiberNode = {
-            parent: fiber,
-            sibling: null,
-            props,
-            child: null,
-            dom
-        }
-        if (index === 0) { // 父与第一个子联立
-            fiber.child = newFiber;
-        } else if (preFiber) { // 兄弟间联立
-            preFiber.sibling = newFiber;
-        }
-        preFiber = newFiber;
-    });
-    if (fiber.child)
-        return fiber.child;
-    if (fiber.sibling) return fiber.sibling;
+    const { type } = fiber;
+    const isFunctionComponent = typeof type === "function";
+    if (isFunctionComponent) { // 处理函数组件
+        updateFunctionComponent(fiber);
+    } else { // 处理普通组件
+        updateHostComponent(fiber);
+    }
+    if (fiber?.child)
+        return fiber?.child;
     // 向上查找第一个存在的父兄弟【先序遍历顺序生成，所以肯定没有处理过】
-    let next = parent
+    let next = fiber
     while (!next?.sibling && next?.parent) {
         next = next.parent;
     }
@@ -168,14 +200,19 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
 > 新特性支持：递归挂载为 React 未来的新特性（如并发模式、Suspense 等）提供了更好的支持，这些特性需要精细的渲染控制，Fragment 无法满足这些需求。
  */
 function commitRoot(fiber?: IFiberNode | null) {
-    console.log(22222);
-    
     if (!fiber) return;
     const { dom, child, sibling, parent } = fiber;
-    if (dom)
-        parent?.dom?.appendChild(dom);
+    // 函数式组件本身的 fiber 节点不会有 dom ，所以有 dom 才进行挂载
+    // fiber 子节点挂载时，应该向上查找到最近的真实父 dom 节点进行挂载
+    let fiberParent = parent;
+    while (fiberParent && !fiberParent?.dom) fiberParent = fiberParent?.parent;
+    if (dom) fiberParent?.dom?.appendChild(dom);
+    // 先序遍历
+    // 递归子
     commitRoot(child);
+    // 递归兄弟节点
     commitRoot(sibling);
+
 }
 /**
  * 任务调度机制
@@ -189,6 +226,7 @@ function workLoop(deadline: IdleDeadline) {
     if (nextFiberUnit) { // 无空余时间时，等待下一次空余时间执行剩余任务
         requestIdleCallback(workLoop);
     } else if (root) { // 所有任务完成，进行统一提交
+        console.log(root, 'root');
         commitRoot(root.child);
     }
 }
