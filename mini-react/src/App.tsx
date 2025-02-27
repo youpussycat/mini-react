@@ -33,7 +33,9 @@ const FCom = () => (
     </div>
 )
 const App2 = (
-    <div>
+    <div onClick={() => {
+        console.log(111)
+    }}>
         111
         <div>test</div>
         222

@@ -78,8 +78,25 @@ function updateProps(dom: Node, props: any) {
     Object.keys(props).forEach(item => {
         if (item === 'nodeValue')
             (dom as Text).nodeValue = props?.nodeValue;
-        else if (item !== 'children')
-            (dom as Element).setAttribute(item, props[item]);
+        else if (item !== 'children') {
+            const thirdCode = item.charCodeAt(2);
+            // 若是事件，则挂载
+            if (
+                !Number.isNaN(thirdCode) && 
+                item.startsWith('on') && 
+                'A'.charCodeAt(0) <= thirdCode && 
+                'Z'.charCodeAt(0) >= thirdCode &&
+                typeof props[item] === 'function'
+            ) {
+                dom.addEventListener(
+                    item.slice(2, item.length)?.toLowerCase(), 
+                    props[item]
+                );
+            }
+            else // 非事件则挂载属性
+                (dom as Element).setAttribute(item, props[item]);
+
+        }
     });
 }
 /**
