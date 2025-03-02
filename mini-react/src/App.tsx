@@ -15,7 +15,9 @@ const App = React.createElement(
         '我更爱大家'
     )
 );
-const FCom = () => (
+let a = 11111;
+const FCom = (props: any) => {
+    return (
     <div>
         1
         <div>
@@ -29,10 +31,10 @@ const FCom = () => (
             </div>
             6
         </div>
-        7
+        7-------{a}---{props.a}
     </div>
-)
-const App2 = (
+)}
+const App2 = () => (
     <div onClick={() => {
         console.log(111)
     }}>
@@ -44,8 +46,16 @@ const App2 = (
             <div>test3<div>test3<div>test3</div></div></div>
         </div>
         111111
-        <FCom />
+        <FCom  a={a}/>
         wq
+        <button
+            onClick={() => {
+                a++;
+                console.log(a);
+                React.update()
+            }} 
+        >测试</button>
+        {a}
     </div>
 )
 export default App2;

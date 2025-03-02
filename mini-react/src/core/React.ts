@@ -1,4 +1,5 @@
 import type { IFiberNode, IReactDOMNode, IReactNode } from '@/types/typing';
+import { EFiberEffectType } from './constant';
 /** 
  * fiber 框架渲染时，容器 dom 对应的 fiber 节点， 当没有渲染任务时为 null
  * 
@@ -13,7 +14,9 @@ let root: IFiberNode | null = null,
      * 
      * > 在触发多次渲染时，最后一个渲染直接将 nextFiberUnit 修改忽略前面的渲染，直接生效最后一次
      */
-    nextFiberUnit: IFiberNode | null = null;
+    nextFiberUnit: IFiberNode | null = null,
+    /** 记录上一次更新的 root ，用于对比更新 props */
+    beforeRoot: IFiberNode | null = null;
 /** 
  * 创建文本节点虚拟 dom
  */
@@ -37,9 +40,25 @@ export const createElement = (type: string | Function, props: any, ...children: 
         type,
         props: {
             ...props,
-            children: children.map(item => (typeof item === 'string') ? createTextNode(item) : item)
+            children: children.map(item => { 
+                return (['string', 'number', 'bigint'].includes(typeof item)) ? 
+                    createTextNode(item.toString()) : 
+                    item
+            })
         }
     };
+}
+/**
+ * 更新 dom 结构
+ */
+export const update = () => {
+    root = {
+        dom: beforeRoot?.dom,
+        props: beforeRoot?.props,
+        oldFiber: beforeRoot
+    };
+    nextFiberUnit = root;
+    requestIdleCallback(workLoop);
 }
 /**
  * 将虚拟节点生成真实节点，并挂载到容器上【递归处理】
@@ -47,12 +66,12 @@ export const createElement = (type: string | Function, props: any, ...children: 
  * @param container 容器真实 dom 
  */
 export const render = (element: IReactDOMNode, container: Element) => {
-
     root = {
         dom: container,
         props: {
             children: [element],
-        }
+        },
+        oldFiber: beforeRoot
     };
     nextFiberUnit = root;
     requestIdleCallback(workLoop);
@@ -70,58 +89,101 @@ const createNode = (type: string) => {
     }
 }
 /**
- * 给 dom 进行相应的属性挂载
- * @param dom 要挂载属性的 dom
- * @param props 需要挂载的属性
- */
-function updateProps(dom: Node, props: any) {
-    Object.keys(props).forEach(item => {
-        if (item === 'nodeValue')
-            (dom as Text).nodeValue = props?.nodeValue;
-        else if (item !== 'children') {
-            const thirdCode = item.charCodeAt(2);
-            // 若是事件，则挂载
-            if (
-                !Number.isNaN(thirdCode) && 
-                item.startsWith('on') && 
-                'A'.charCodeAt(0) <= thirdCode && 
-                'Z'.charCodeAt(0) >= thirdCode &&
-                typeof props[item] === 'function'
-            ) {
-                dom.addEventListener(
-                    item.slice(2, item.length)?.toLowerCase(), 
-                    props[item]
-                );
-            }
-            else // 非事件则挂载属性
-                (dom as Element).setAttribute(item, props[item]);
-
-        }
-    });
-}
-/**
  * 将子节点列表生成对应的 fiber 节点，并与父节点 fiber 结合串成链表
  * @param fiber 父节点的 fiber 节点
  * @param children 要处理的子节点列表
  */
 function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
+    /** 前一个子节点，用于遍历子节点时，将上一个节点的兄弟节点的指针指向当前节点 */
     let prevChild: IFiberNode | null = null;
+    /** 当前节点的上一次渲染时的 fiber ，用于进行对比更新 */
+    let oldFiber: IFiberNode | undefined | null
+        = fiber?.oldFiber?.child,
+        /** 当前渲染活动的当前节点的 fiber */
+        newFiber: IFiberNode | null = null;
+    // 遍历子节点列表生成对应的 fiber 节点
     children?.forEach((child, index) => {
-        const newFiber = {
-            type: child.type,
-            props: child.props,
-            child: null,
-            parent: fiber,
-            sibling: null,
-            dom: null,
-        };
-
+        const { type, props } = child;
+        if (oldFiber?.type === type) { // 后续只需更新属性不需要创建 dom
+            newFiber = {
+                type,
+                props,
+                child: null,
+                parent: fiber,
+                sibling: null,
+                dom: oldFiber?.dom,
+                oldFiber,
+                effectType: EFiberEffectType.update
+            };
+        } else {// 后续要替换原有的 dom
+            newFiber = {
+                type,
+                props,
+                child: null,
+                parent: fiber,
+                sibling: null,
+                dom: null,
+                // 由于本层 dom 即将要改，后续的子fiber对比就没有必要了，
+                // 所以此处 oldFiber 直接置为 null，去除后续子 fiber 新旧对比
+                oldFiber: null,
+                effectType: EFiberEffectType.placement
+            };
+        }
         if (index === 0) {
             fiber.child = newFiber;
         } else {
             prevChild!.sibling = newFiber;
         }
+        // 下一个对比的是当前 旧 fiber 的兄弟
+        oldFiber = oldFiber?.sibling;
         prevChild = newFiber;
+    });
+}
+/**
+ * 给 dom 进行相应的属性挂载
+ * @param dom 要挂载属性的 dom
+ * @param props 需要挂载的属性
+ */
+function updateProps(dom: Node, props: any = {}, oldProps: any = {}) {
+    /** 是否为事件 key */
+    const isEventKey = (key: string) => {
+        const thirdCode = key.charCodeAt(2);
+        return !Number.isNaN(thirdCode) &&
+            key.startsWith('on') &&
+            'A'.charCodeAt(0) <= thirdCode &&
+            'Z'.charCodeAt(0) >= thirdCode &&
+            typeof props[key] === 'function'
+    }
+    // 旧属性中有，新属性中没有的删除
+    Object.keys(oldProps).forEach(item => {
+        if (item !== "children")
+            if (!props[item])
+                if (!isEventKey(item))
+                    (dom as Element).removeAttribute(item);
+                else
+                    dom.removeEventListener(item.slice(2, item.length)?.toLowerCase(), oldProps[item])
+    });
+
+    // 其余的直接改变
+    Object.keys(props).forEach(item => {
+        if (item === 'nodeValue') {
+            (dom as Text).nodeValue = props?.nodeValue;
+        }
+        else if (item !== 'children') {
+            if (props[item] !== oldProps[item])
+                // 若是事件，则重新挂载，注意要删除之前的事件
+                if (isEventKey(item)) {
+                    const eventKey = item.slice(2, item.length)?.toLowerCase();
+                    dom.removeEventListener(eventKey, oldProps[item])
+                    dom.addEventListener(
+                        eventKey,
+                        props[item]
+                    );
+                }
+                else // 非事件则挂载属性
+                    (dom as Element).setAttribute(item, props[item]);
+
+        }
     });
 }
 /**
@@ -139,10 +201,10 @@ function updateFunctionComponent(fiber: IFiberNode) {
  * @param fiber 要生成真实节点的 fiber 节点
  */
 function updateHostComponent(fiber: IFiberNode) {
-    if (!fiber.dom) { // 根据类型创建 空白 dom 节点
+    if (!fiber.dom) { // 根据类型创建 空白 dom 节点，由于更新时由原本的 dom 的原因，所以更新 props 时不会走此处
         const dom = (fiber.dom = createNode(fiber.type as string));
         // 挂载属性
-        updateProps(dom, fiber.props);
+        updateProps(dom, fiber.props, fiber.oldFiber?.props || {});
     }
     /** 要生成 fiber 的虚拟节点列表 */
     const children = fiber.props?.children;
@@ -166,6 +228,7 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
     } else { // 处理普通组件
         updateHostComponent(fiber);
     }
+    // 有子则处理子，没子找自身或是祖父兄弟节点处理
     if (fiber?.child)
         return fiber?.child;
     // 向上查找第一个存在的父兄弟【先序遍历顺序生成，所以肯定没有处理过】
@@ -218,18 +281,23 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
  */
 function commitRoot(fiber?: IFiberNode | null) {
     if (!fiber) return;
-    const { dom, child, sibling, parent } = fiber;
-    // 函数式组件本身的 fiber 节点不会有 dom ，所以有 dom 才进行挂载
-    // fiber 子节点挂载时，应该向上查找到最近的真实父 dom 节点进行挂载
-    let fiberParent = parent;
-    while (fiberParent && !fiberParent?.dom) fiberParent = fiberParent?.parent;
-    if (dom) fiberParent?.dom?.appendChild(dom);
+    const { dom, child, sibling, parent, props, oldFiber, type } = fiber;
+    // 有的变动仅仅修改了 props 值，所以不会走到上方的组件更新，
+    // 需要根据effectType 实现创建挂载 dom 与 dom 属性的更新
+    if (fiber.effectType === EFiberEffectType.placement) {
+        // 函数式组件本身的 fiber 节点不会有 dom ，所以有 dom 才进行挂载
+        // fiber 子节点挂载时，应该向上查找到最近的真实父 dom 节点进行挂载
+        let fiberParent = parent;
+        while (fiberParent && !fiberParent?.dom) fiberParent = fiberParent?.parent;
+        if (dom) fiberParent?.dom?.appendChild(dom);
+    } else if (typeof type !== 'function') { // 非函数组件才有 dom 才需要进行属性改动
+        updateProps(dom!, props, oldFiber?.props)
+    }
     // 先序遍历
     // 递归子
     commitRoot(child);
     // 递归兄弟节点
     commitRoot(sibling);
-
 }
 /**
  * 任务调度机制
@@ -245,10 +313,14 @@ function workLoop(deadline: IdleDeadline) {
     } else if (root) { // 所有任务完成，进行统一提交
         console.log(root, 'root');
         commitRoot(root.child);
+        // 更新记录
+        beforeRoot = root;
+        root = null;
     }
 }
 
 export default {
     createElement,
-    render
+    render,
+    update
 }

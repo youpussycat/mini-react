@@ -19,4 +19,6 @@ export declare interface IFiberNode {
     child?: null | IFiberNode;
     dom?: Node | null;
     type?: null | Function | string;
+    oldFiber?: null | IFiberNode;
+    effectType?: 'placement' | 'update';
 }
