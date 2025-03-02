@@ -16,7 +16,9 @@ let root: IFiberNode | null = null,
      */
     nextFiberUnit: IFiberNode | null = null,
     /** 记录上一次更新的 root ，用于对比更新 props */
-    beforeRoot: IFiberNode | null = null;
+    beforeRoot: IFiberNode | null = null,
+    /** 更新时要删除的 fiber 节点集合 */
+    deleteFibers: IFiberNode[] = [];
 /** 
  * 创建文本节点虚拟 dom
  */
@@ -104,6 +106,7 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
     // 遍历子节点列表生成对应的 fiber 节点
     children?.forEach((child, index) => {
         const { type, props } = child;
+        const fatherDomAnchor = fiber.dom ? fiber : fiber.fatherHasDom;
         if (oldFiber?.type === type) { // 后续只需更新属性不需要创建 dom
             newFiber = {
                 type,
@@ -113,7 +116,8 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
                 sibling: null,
                 dom: oldFiber?.dom,
                 oldFiber,
-                effectType: EFiberEffectType.update
+                effectType: EFiberEffectType.update,
+                fatherHasDom: fatherDomAnchor,
             };
         } else {// 后续要替换原有的 dom
             newFiber = {
@@ -126,8 +130,11 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
                 // 由于本层 dom 即将要改，后续的子fiber对比就没有必要了，
                 // 所以此处 oldFiber 直接置为 null，去除后续子 fiber 新旧对比
                 oldFiber: null,
-                effectType: EFiberEffectType.placement
+                effectType: EFiberEffectType.placement,
+                fatherHasDom: fatherDomAnchor,
             };
+            if (oldFiber) // oldFiber 不为 null ，则表示 oldFiber 对应的 dom 节点需要删除
+                deleteFibers.push(oldFiber!);
         }
         if (index === 0) {
             fiber.child = newFiber;
@@ -281,15 +288,14 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
  */
 function commitRoot(fiber?: IFiberNode | null) {
     if (!fiber) return;
-    const { dom, child, sibling, parent, props, oldFiber, type } = fiber;
+    if(fiber?.props?.nodeValue ==='hasDOMBUG')debugger
+    const { dom, child, sibling, fatherHasDom, props, oldFiber, type } = fiber;
     // 有的变动仅仅修改了 props 值，所以不会走到上方的组件更新，
     // 需要根据effectType 实现创建挂载 dom 与 dom 属性的更新
     if (fiber.effectType === EFiberEffectType.placement) {
         // 函数式组件本身的 fiber 节点不会有 dom ，所以有 dom 才进行挂载
         // fiber 子节点挂载时，应该向上查找到最近的真实父 dom 节点进行挂载
-        let fiberParent = parent;
-        while (fiberParent && !fiberParent?.dom) fiberParent = fiberParent?.parent;
-        if (dom) fiberParent?.dom?.appendChild(dom);
+        if (dom) fatherHasDom?.dom?.appendChild(dom);
     } else if (typeof type !== 'function') { // 非函数组件才有 dom 才需要进行属性改动
         updateProps(dom!, props, oldFiber?.props)
     }
@@ -302,6 +308,10 @@ function commitRoot(fiber?: IFiberNode | null) {
 /**
  * 任务调度机制
  * 利用空余时间执行 fiber 节点生成、虚拟dom -》 真实 dom 等任务
+ * @param deadline 空余时间
+ * 
+ * @description 为什么删除节点时，使用removeChild 而不是直接 dom.remove() 
+ * > 因为第一个有 dom 的父节点以及存储到
  */
 function workLoop(deadline: IdleDeadline) {
     // 有空余时间且有下一个任务, 循环执行任务
@@ -310,9 +320,24 @@ function workLoop(deadline: IdleDeadline) {
     }
     if (nextFiberUnit) { // 无空余时间时，等待下一次空余时间执行剩余任务
         requestIdleCallback(workLoop);
-    } else if (root) { // 所有任务完成，进行统一提交
+    } else if (root) { // 所有任务完成，进行 dom 统一提交
         console.log(root, 'root');
+        // 统一提交
         commitRoot(root.child);
+        // 清除本次更新中要删除的 dom 节点
+        deleteFibers.forEach(item => {
+            let dom: Node | null | undefined = item.dom;
+            // 由于函数组件的 fiber 节点没有 dom ，所以需要向下查找到第一个有 dom 的节点
+            while (!dom && item.child) {
+                dom = item.child.dom;
+            }
+            if (dom) { 
+                // 直接父级 fiber 可能是函数组件外壳无 dom ，所以得用 fatherHasDom
+                item.fatherHasDom?.dom?.removeChild(dom);
+            }
+        });
+        // 清除本次更新的删除节点记录
+        deleteFibers = [];
         // 更新记录
         beforeRoot = root;
         root = null;

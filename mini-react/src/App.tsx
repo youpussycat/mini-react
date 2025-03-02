@@ -15,25 +15,33 @@ const App = React.createElement(
         '我更爱大家'
     )
 );
-let a = 11111;
+let a = 11111, change: any = {};
 const FCom = (props: any) => {
     return (
-    <div>
-        1
         <div>
-            2
-        </div>
-        3
-        <div>
-            4 
+            1
             <div>
-                5
+                2
             </div>
-            6
+            3
+            <div>
+                4
+                <div>
+                    5
+                </div>
+                6
+            </div>
+            7-------{a}---{props.a}
         </div>
-        7-------{a}---{props.a}
+    )
+}
+const App1 = () => (
+    <div>
+        111
+        <div>test</div>
+        222
     </div>
-)}
+)
 const App2 = () => (
     <div onClick={() => {
         console.log(111)
@@ -46,16 +54,44 @@ const App2 = () => (
             <div>test3<div>test3<div>test3</div></div></div>
         </div>
         111111
-        <FCom  a={a}/>
+        <FCom a={a} />
         wq
         <button
             onClick={() => {
                 a++;
                 console.log(a);
                 React.update()
-            }} 
-        >测试</button>
+            }}
+        >测试属性更改</button>
         {a}
+        <br />
+        --------------------------
+        <br />
+        <button
+            onClick={() => {
+                change.normal = !change.normal;
+                React.update();
+            }}
+        >
+            测试节点替换——普通节点
+        </button>
+        {
+            change.normal ? <div>1</div> : <div>2</div>
+        }
+        <br />
+        <button
+            onClick={() => {
+                change.fun = !change.fun;
+                React.update();
+            }}
+        
+        >
+            测试节点替换——函数节点
+        </button>
+        {
+            change.fun ? <FCom a={a} /> : <App1 a={a} />
+        }
+        hasDOMBUG
     </div>
 )
 export default App2;
