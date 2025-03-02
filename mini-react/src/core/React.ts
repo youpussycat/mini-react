@@ -42,9 +42,9 @@ export const createElement = (type: string | Function, props: any, ...children: 
         type,
         props: {
             ...props,
-            children: children.map(item => { 
-                return (['string', 'number', 'bigint'].includes(typeof item)) ? 
-                    createTextNode(item.toString()) : 
+            children: children.map(item => {
+                return (['string', 'number', 'bigint'].includes(typeof item)) ?
+                    createTextNode(item.toString()) :
                     item
             })
         }
@@ -253,51 +253,69 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
  * 
  * @description 必须先序遍历实现，不然的话，节点渲染顺序会紊乱
  * 
- * 比如层级遍历，函数组件的嵌套会使得函数组件真是要渲染的节点在链表中靠后，
- * 这样使用 appendChild 就会使得渲染的真实节点挂载位置可能在函数组件的所有兄弟节点的后面， 但是实际应该是渲染在函数组件的位置上
+ * > 比如层级遍历，函数组件的嵌套会使得函数组件真是要渲染的节点在链表中靠后，
+ * 这样就会使得渲染的真实节点挂载位置可能在函数组件的所有兄弟节点的后面， 但是实际应该是渲染在函数组件的位置上
  * 
+ * @description 挂载节点时不可直接用 appendChild，要寻找第一个有 dom 的兄弟节点作为参照节点，添加到参照节点前
+ * 
+ * > 这是因为在 dom 更新时，若函数组件后有一个兄弟节点不做任何改变，函数组件换成另一个函数组件，
+ * 此时如果用 appendChild 就会导致函数组件的 dom 被插入到兄弟节点的后面，这样节点顺序就会渲染错误。
+ * 但是使用 beforeInsertBefore 就可以将函数组件的 dom 插入到兄弟节点的前面，这样节点顺序就会渲染正确。
  * 
  * @description React 在 DOM 节点创建时没有直接在顶层使用 Fragment 实现统一提交，而是选择后续递归创建节点挂载，主要有以下几个原因：
-1. 灵活性
-
-> a. 递归挂载：React 的递归挂载方式允许在组件树的任何位置动态生成和插入节点，这种方式更具灵活性，能够处理复杂的组件结构和条件渲染。
-
-> b. Fragment 限制：Fragment 主要用于分组多个子节点而不引入额外 DOM 节点，但它无法直接处理复杂的挂载逻辑，如条件渲染、动态插入等。
-
-2. 性能优化
-
-> a. 增量渲染：React 使用 Fiber 架构实现增量渲染，递归挂载可以更好地与 Fiber 的调度机制结合，实现高效的渲染和更新。
-
-> b. 统一提交：虽然 Fragment 可以实现某种程度的统一提交，但递归挂载结合 Fiber 架构能更精细地控制渲染过程，减少不必要的 DOM 操作，提升性能。
-
-3. 一致性
-
-> a. 统一处理：递归挂载确保所有节点（无论是根节点还是子节点）都经过相同的创建和挂载流程，保持一致性，简化代码逻辑。
-
-> b. 生命周期管理：递归挂载便于在节点创建和挂载过程中触发相应的生命周期钩子，确保组件生命周期的正确执行。
-
-4. 错误处理和调试
-
-> a. 错误边界：递归挂载使得 React 可以在每个组件层级设置错误边界，更好地捕获和处理错误。
-
-> b. 调试友好：递归挂载生成的组件树结构更清晰，便于开发者调试和理解代码执行流程。
- 
-5. 未来扩展
-
-> 新特性支持：递归挂载为 React 未来的新特性（如并发模式、Suspense 等）提供了更好的支持，这些特性需要精细的渲染控制，Fragment 无法满足这些需求。
+ * 1. 灵活性
+ * 
+ * > a. 递归挂载：React 的递归挂载方式允许在组件树的任何位置动态生成和插入节点，这种方式更具灵活性，能够处理复杂的组件结构和条件渲染。
+ * 
+ * > b. Fragment 限制：Fragment 主要用于分组多个子节点而不引入额外 DOM 节点，但它无法直接处理复杂的挂载逻辑，如条件渲染、动态插入等。
+ * 
+ * 2. 性能优化
+ * 
+ * > a. 增量渲染：React 使用 Fiber 架构实现增量渲染，递归挂载可以更好地与 Fiber 的调度机制结合，实现高效的渲染和更新。
+ * 
+ * > b. 统一提交：虽然 Fragment 可以实现某种程度的统一提交，但递归挂载结合 Fiber 架构能更精细地控制渲染过程，减少不必要的 DOM 操作，提升性能。
+ * 
+ * 3. 一致性
+ * 
+ * > a. 统一处理：递归挂载确保所有节点（无论是根节点还是子节点）都经过相同的创建和挂载流程，保持一致性，简化代码逻辑。
+ * 
+ * > b. 生命周期管理：递归挂载便于在节点创建和挂载过程中触发相应的生命周期钩子，确保组件生命周期的正确执行。
+ * 
+ * 4. 错误处理和调试
+ * 
+ * > a. 错误边界：递归挂载使得 React 可以在每个组件层级设置错误边界，更好地捕获和处理错误。
+ * 
+ * > b. 调试友好：递归挂载生成的组件树结构更清晰，便于开发者调试和理解代码执行流程。
+ * 
+ * 5. 未来扩展
+ * 
+ * > 新特性支持：递归挂载为 React 未来的新特性（如并发模式、Suspense 等）提供了更好的支持，这些特性需要精细的渲染控制，Fragment 无法满足这些需求。
  */
 function commitRoot(fiber?: IFiberNode | null) {
     if (!fiber) return;
-    if(fiber?.props?.nodeValue ==='hasDOMBUG')debugger
     const { dom, child, sibling, fatherHasDom, props, oldFiber, type } = fiber;
     // 有的变动仅仅修改了 props 值，所以不会走到上方的组件更新，
     // 需要根据effectType 实现创建挂载 dom 与 dom 属性的更新
     if (fiber.effectType === EFiberEffectType.placement) {
-        // 函数式组件本身的 fiber 节点不会有 dom ，所以有 dom 才进行挂载
-        // fiber 子节点挂载时，应该向上查找到最近的真实父 dom 节点进行挂载
-        if (dom) fatherHasDom?.dom?.appendChild(dom);
+        if (dom && fatherHasDom?.dom) {
+            // 查找参考节点
+            /** 参考节点 */
+            let referenceNode: Node | null = null;
+            /** 用于遍历兄弟节点的指针 */
+            let siblingFiber = fiber.sibling;
+            // 查找兄弟节点中第一个有 dom 的节点
+            while (siblingFiber) {
+                if (siblingFiber.dom) {
+                    referenceNode = siblingFiber.dom;
+                    break;
+                }
+                siblingFiber = siblingFiber.child;
+            }
+            // 插入到兄弟节点的前面或是最后面
+            fatherHasDom.dom.insertBefore(dom, referenceNode || null);
+        }
     } else if (typeof type !== 'function') { // 非函数组件才有 dom 才需要进行属性改动
-        updateProps(dom!, props, oldFiber?.props)
+        updateProps(dom!, props, oldFiber?.props);
     }
     // 先序遍历
     // 递归子
@@ -331,7 +349,7 @@ function workLoop(deadline: IdleDeadline) {
             while (!dom && item.child) {
                 dom = item.child.dom;
             }
-            if (dom) { 
+            if (dom) {
                 // 直接父级 fiber 可能是函数组件外壳无 dom ，所以得用 fatherHasDom
                 item.fatherHasDom?.dom?.removeChild(dom);
             }
