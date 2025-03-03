@@ -15,6 +15,30 @@ const App = React.createElement(
         '我更爱大家'
     )
 );
+let showBar = false;
+function Counter() {
+    const foo = (
+        <div>foo
+            <div>child</div>
+        </div>)
+    const bar = <div>bar</div>;
+    function handleShowBar() {
+        showBar = !showBar;
+        console.log(showBar);
+        React.update();
+    }
+    return (
+        <div>
+            Counter
+            <button onClick={handleShowBar}>
+                showBar
+            </button>
+            <div>
+                {showBar ? bar : foo}
+            </div>
+        </div>
+    )
+}
 let a = 11111, change: any = {};
 const FCom = (props: any) => {
     return (
@@ -84,7 +108,7 @@ const App2 = () => (
                 change.fun = !change.fun;
                 React.update();
             }}
-        
+
         >
             测试节点替换——函数节点
         </button>
@@ -92,6 +116,8 @@ const App2 = () => (
             change.fun ? <FCom a={a} /> : <App1 a={a} />
         }
         hasDOMBUG
+        ----------------------------------------------
+        <Counter />
     </div>
 )
 export default App2;

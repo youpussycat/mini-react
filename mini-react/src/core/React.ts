@@ -54,6 +54,8 @@ export const createElement = (type: string | Function, props: any, ...children: 
  * 更新 dom 结构
  */
 export const update = () => {
+    console.log('update');
+    
     root = {
         dom: beforeRoot?.dom,
         props: beforeRoot?.props,
@@ -129,7 +131,7 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
                 dom: null,
                 // 由于本层 dom 即将要改，后续的子fiber对比就没有必要了，
                 // 所以此处 oldFiber 直接置为 null，去除后续子 fiber 新旧对比
-                oldFiber: null,
+                oldFiber:null,
                 effectType: EFiberEffectType.placement,
                 fatherHasDom: fatherDomAnchor,
             };
@@ -145,6 +147,13 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
         oldFiber = oldFiber?.sibling;
         prevChild = newFiber;
     });
+    let currentOldFiber = fiber.oldFiber?.child;
+  while (currentOldFiber) {
+    if (!children.some(child => child.type === currentOldFiber?.type)) {
+      deleteFibers.push(currentOldFiber);
+    }
+    currentOldFiber = currentOldFiber.sibling;
+  }
 }
 /**
  * 给 dom 进行相应的属性挂载
@@ -291,38 +300,49 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
  * 
  * > 新特性支持：递归挂载为 React 未来的新特性（如并发模式、Suspense 等）提供了更好的支持，这些特性需要精细的渲染控制，Fragment 无法满足这些需求。
  */
-function commitRoot(fiber?: IFiberNode | null) {
-    if (!fiber) return;
-    const { dom, child, sibling, fatherHasDom, props, oldFiber, type } = fiber;
-    // 有的变动仅仅修改了 props 值，所以不会走到上方的组件更新，
-    // 需要根据effectType 实现创建挂载 dom 与 dom 属性的更新
-    if (fiber.effectType === EFiberEffectType.placement) {
-        if (dom && fatherHasDom?.dom) {
-            // 查找参考节点
-            /** 参考节点 */
-            let referenceNode: Node | null = null;
-            /** 用于遍历兄弟节点的指针 */
-            let siblingFiber = fiber.sibling;
-            // 查找兄弟节点中第一个有 dom 的节点
-            while (siblingFiber) {
-                if (siblingFiber.dom) {
-                    referenceNode = siblingFiber.dom;
-                    break;
-                }
-                siblingFiber = siblingFiber.child;
-            }
-            // 插入到兄弟节点的前面或是最后面
-            fatherHasDom.dom.insertBefore(dom, referenceNode || null);
-        }
-    } else if (typeof type !== 'function') { // 非函数组件才有 dom 才需要进行属性改动
-        updateProps(dom!, props, oldFiber?.props);
+// 新增辅助函数：查找 Fiber 子树中第一个真实 DOM
+function findFirstDom(fiber: IFiberNode | null): ChildNode | null {
+    while (fiber) {
+      if (fiber.dom) return fiber.dom as ChildNode;
+      if (fiber.child) return findFirstDom(fiber.child);
+      fiber = fiber.sibling || null;
     }
-    // 先序遍历
-    // 递归子
-    commitRoot(child);
-    // 递归兄弟节点
-    commitRoot(sibling);
-}
+    return null;
+  }
+  
+  function commitRoot(fiber?: IFiberNode | null) {
+    if (!fiber) return;
+    const { dom, fatherHasDom, effectType, type, props, oldFiber } = fiber;
+  
+    if (effectType === EFiberEffectType.placement) {
+      if (dom && fatherHasDom?.dom) {
+        const parentDom = fatherHasDom.dom;
+        // 获取父节点所有真实子节点（确保参考节点属于当前 DOM 树）
+        const parentChildren = Array.from(parentDom.childNodes);
+        debugger
+        // 查找第一个有效的参考节点
+        let referenceNode: Node | null = null;
+        let currentFiber = oldFiber?.sibling;
+        while (currentFiber) {
+            debugger
+          const candidateDom = findFirstDom(currentFiber);
+          if (candidateDom && parentChildren.includes(candidateDom)) {
+            referenceNode = candidateDom;
+            break;
+          }
+          currentFiber = currentFiber.sibling;
+        }
+        console.log(dom, referenceNode,parentChildren, 'referenceNode');
+        
+        parentDom.insertBefore(dom, referenceNode);
+      }
+    } else if (typeof type !== 'function') {
+      updateProps(dom!, props, oldFiber?.props);
+    }
+  
+    commitRoot(fiber.child);
+    commitRoot(fiber.sibling);
+  }
 /**
  * 任务调度机制
  * 利用空余时间执行 fiber 节点生成、虚拟dom -》 真实 dom 等任务
@@ -338,29 +358,42 @@ function workLoop(deadline: IdleDeadline) {
     }
     if (nextFiberUnit) { // 无空余时间时，等待下一次空余时间执行剩余任务
         requestIdleCallback(workLoop);
-    } else if (root) { // 所有任务完成，进行 dom 统一提交
-        console.log(root, 'root');
-        // 统一提交
+    } else if (root) {
         commitRoot(root.child);
-        // 清除本次更新中要删除的 dom 节点
+        
+        // 删除节点时检查父子关系
         deleteFibers.forEach(item => {
-            let dom: Node | null | undefined = item.dom;
-            // 由于函数组件的 fiber 节点没有 dom ，所以需要向下查找到第一个有 dom 的节点
-            while (!dom && item.child) {
-                dom = item.child.dom;
-            }
-            if (dom) {
-                // 直接父级 fiber 可能是函数组件外壳无 dom ，所以得用 fatherHasDom
-                item.fatherHasDom?.dom?.removeChild(dom);
-            }
+          let dom: Node | null | undefined = item.dom;
+          while (!dom && item.child) {
+            dom = item.child.dom;
+          }
+          if (dom && item.fatherHasDom?.dom?.contains(dom)) { // 关键检查
+            item.fatherHasDom.dom.removeChild(dom);
+          }
         });
-        // 清除本次更新的删除节点记录
+    
+        console.log(root, 'root');debugger
+        // 递归清理旧 Fiber 引用
+        if (beforeRoot) {
+          recursivelyCleanFiber(beforeRoot);
+        }
+        
         deleteFibers = [];
-        // 更新记录
+        
         beforeRoot = root;
         root = null;
-    }
+
+      }
 }
+
+
+// 递归清理 Fiber 树 DOM 引用
+function recursivelyCleanFiber(fiber: IFiberNode) {
+    if (fiber.child) recursivelyCleanFiber(fiber.child);
+    if (fiber.sibling) recursivelyCleanFiber(fiber.sibling);
+    fiber.dom = null; // 清除 DOM 引用
+    fiber.oldFiber = null;
+  }
 
 export default {
     createElement,
