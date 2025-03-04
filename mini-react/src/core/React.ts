@@ -288,13 +288,13 @@ function performWorkOfUnit(fiber: IFiberNode): IFiberNode | null {
  */
 function commitRoot(fiber?: IFiberNode | null) {
     if (!fiber) return;
-    if(fiber?.props?.nodeValue ==='hasDOMBUG')debugger
     const { dom, child, sibling, fatherHasDom, props, oldFiber, type } = fiber;
     // 有的变动仅仅修改了 props 值，所以不会走到上方的组件更新，
     // 需要根据effectType 实现创建挂载 dom 与 dom 属性的更新
     if (fiber.effectType === EFiberEffectType.placement) {
         // 函数式组件本身的 fiber 节点不会有 dom ，所以有 dom 才进行挂载
         // fiber 子节点挂载时，应该向上查找到最近的真实父 dom 节点进行挂载
+        // TODO: 条件渲染函数组件后有未改动的兄弟节点只用 appendChild 会出错，必须依靠 diff key 来进行更新
         if (dom) fatherHasDom?.dom?.appendChild(dom);
     } else if (typeof type !== 'function') { // 非函数组件才有 dom 才需要进行属性改动
         updateProps(dom!, props, oldFiber?.props)
