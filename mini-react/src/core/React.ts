@@ -133,8 +133,9 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
                 effectType: EFiberEffectType.placement,
                 fatherHasDom: fatherDomAnchor,
             };
-            if (oldFiber) // oldFiber 不为 null ，则表示 oldFiber 对应的 dom 节点需要删除
-                deleteFibers.push(oldFiber!);
+            if (oldFiber) { // 节点重新创建，原来的节点就应该删除
+                deleteFibers.push(oldFiber);
+            }
         }
         if (index === 0) {
             fiber.child = newFiber;
@@ -145,6 +146,11 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
         oldFiber = oldFiber?.sibling;
         prevChild = newFiber;
     });
+    // oldFiber 不为 null ，则表示新的链表比旧的要短，需要删除多余的旧节点
+    while (oldFiber) { 
+        deleteFibers.push(oldFiber);
+        oldFiber = oldFiber?.sibling;
+    }
 }
 /**
  * 给 dom 进行相应的属性挂载
