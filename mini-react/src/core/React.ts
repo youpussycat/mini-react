@@ -105,7 +105,8 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
         newFiber: IFiberNode | null = null;
     // 遍历子节点列表生成对应的 fiber 节点
     children?.forEach((child, index) => {
-        const { type, props } = child;
+
+        const { type, props } = child || {};
         const fatherDomAnchor = fiber.dom ? fiber : fiber.fatherHasDom;
         if (oldFiber?.type === type) { // 后续只需更新属性不需要创建 dom
             newFiber = {
@@ -120,19 +121,22 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
                 fatherHasDom: fatherDomAnchor,
             };
         } else {// 后续要替换原有的 dom
-            newFiber = {
-                type,
-                props,
-                child: null,
-                parent: fiber,
-                sibling: null,
-                dom: null,
-                // 由于本层 dom 即将要改，后续的子fiber对比就没有必要了，
-                // 所以此处 oldFiber 直接置为 null，去除后续子 fiber 新旧对比
-                oldFiber: null,
-                effectType: EFiberEffectType.placement,
-                fatherHasDom: fatherDomAnchor,
-            };
+            if (child) { // 当节点为 null 或是 false 时忽略
+                newFiber = {
+                    type,
+                    props,
+                    child: null,
+                    parent: fiber,
+                    sibling: null,
+                    dom: null,
+                    // 由于本层 dom 即将要改，后续的子fiber对比就没有必要了，
+                    // 所以此处 oldFiber 直接置为 null，去除后续子 fiber 新旧对比
+                    oldFiber: null,
+                    effectType: EFiberEffectType.placement,
+                    fatherHasDom: fatherDomAnchor,
+                };
+                
+            }
             if (oldFiber) { // 节点重新创建，原来的节点就应该删除
                 deleteFibers.push(oldFiber);
             }
@@ -144,7 +148,8 @@ function initChildren(fiber: IFiberNode, children: IReactDOMNode[]) {
         }
         // 下一个对比的是当前 旧 fiber 的兄弟
         oldFiber = oldFiber?.sibling;
-        prevChild = newFiber;
+        if (newFiber) // 防止当前fiber为一个false 或 null，此时应忽略该节点，当作在fiber树中不存在
+            prevChild = newFiber;
     });
     // oldFiber 不为 null ，则表示新的链表比旧的要短，需要删除多余的旧节点
     while (oldFiber) { 

@@ -92,6 +92,8 @@ const App2 = () => (
             change.fun ? <FCom a={a} /> : <App1 a={a} />
         }
         hasDOMBUG
+        {false}
+        {null}强强强强
     </div>
 )
 export default App2;
