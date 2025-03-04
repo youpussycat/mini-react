@@ -18,7 +18,9 @@ let root: IFiberNode | null = null,
     /** 记录上一次更新的 root ，用于对比更新 props */
     beforeRoot: IFiberNode | null = null,
     /** 更新时要删除的 fiber 节点集合 */
-    deleteFibers: IFiberNode[] = [];
+    deleteFibers: IFiberNode[] = [],
+    /** 当前处理的函数组件的fiber节点 */
+    currentFunFiber: IFiberNode | null = null;
 /** 
  * 创建文本节点虚拟 dom
  */
@@ -51,16 +53,28 @@ export const createElement = (type: string | Function, props: any, ...children: 
     };
 }
 /**
- * 更新 dom 结构
+ * 产生触发 dom 结构更新方法的函数
+ * 
+ * @description 为啥 currentFunFiber 明明是更新函数式组件的时候才赋的值，而更新时可以只触发对应函数组件的更新
+ * 
+ * > 写成返回回调的形式，回调调用才能触发更新，意味着该函数将会在函数组件内部最外层进行调用
+ * 就像 hooks 一样。此时，由于第一次渲染 dom 是从 根节点开始的，运行到当前函数组件后，
+ * currentFunFiber 由于函数组件的构建，值为当前函数组件，而该函数在函数组件初次加载就调用了
+ * 导致之后产生的 update 的返回值方法都将当前函数组件的 fiber 作为闭包存储在返回值方法的内部currentUpdateFiber
+ * 后续返回值函数调用，就可以以当前函数组件的 fiber 为起点更新。
  */
 export const update = () => {
-    root = {
-        dom: beforeRoot?.dom,
-        props: beforeRoot?.props,
-        oldFiber: beforeRoot
-    };
-    nextFiberUnit = root;
-    requestIdleCallback(workLoop);
+    let currentUpdateFiber = currentFunFiber;
+    return () => {
+        // 更新时将当前改变的函数组件fiber作为更新的开始节点
+        // 原生元素组件不会触发更新，所以不用考虑非函数组件的 fiber 的查找与存储。
+        root = {
+            ...currentUpdateFiber,
+            oldFiber: currentUpdateFiber
+        };
+        nextFiberUnit = root;
+        requestIdleCallback(workLoop);
+    }
 }
 /**
  * 将虚拟节点生成真实节点，并挂载到容器上【递归处理】
@@ -209,6 +223,10 @@ function updateProps(dom: Node, props: any = {}, oldProps: any = {}) {
  * @param fiber 要函数组件的 fiber 节点
  */
 function updateFunctionComponent(fiber: IFiberNode) {
+    // 保存当前函数组件的 fiber ，以至于 update 时，
+    // 可以让返回值形成闭包存储当前函数组件的fiber，
+    // 这样触发更新时可以从此组件开始更新
+    currentFunFiber = fiber;
     /** 函数组件的返回值 虚拟 DOM 结构 */
     const children = [(fiber.type as Function)?.(fiber.props)];
     // 生成链表
@@ -328,6 +346,12 @@ function workLoop(deadline: IdleDeadline) {
     // 有空余时间且有下一个任务, 循环执行任务
     while (deadline.timeRemaining() > 1 && nextFiberUnit) { // 根据当前节点生成下一个 fiber 节点
         nextFiberUnit = performWorkOfUnit(nextFiberUnit);
+    // 更新时， root 为 fiber 树上的某个子节点，这样才能有兄弟节点
+    // 下面这判断表示，下一个任务是处理 root 的兄弟节点，root 本身变更处理完毕，
+    // 此时说明本次更新内容已经做完，不需要继续下去。
+    if (root?.sibling?.type === nextFiberUnit?.type) {
+        nextFiberUnit = null;
+      }
     }
     if (nextFiberUnit) { // 无空余时间时，等待下一次空余时间执行剩余任务
         requestIdleCallback(workLoop);

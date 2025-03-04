@@ -17,6 +17,8 @@ const App = React.createElement(
 );
 let a = 11111, change: any = {};
 const FCom = (props: any) => {
+    console.log('ff');
+    
     return (
         <div>
             1
@@ -35,14 +37,24 @@ const FCom = (props: any) => {
         </div>
     )
 }
-const App1 = () => (
+const App1 = () => {
+    console.log('app1');
+    
+    const update = React.update()
+    return (
     <div>
-        111
+        111{a}
+        <button onClick={() => {
+            a++;
+            update();
+        }}>测试更新优化</button>
         <div>test</div>
         222
     </div>
-)
-const App2 = () => (
+)}
+const App2 = () => {
+    const update = React.update()
+    return (
     <div onClick={() => {
         console.log(111)
     }}>
@@ -60,7 +72,7 @@ const App2 = () => (
             onClick={() => {
                 a++;
                 console.log(a);
-                React.update()
+                update();
             }}
         >测试属性更改</button>
         {a}
@@ -70,7 +82,7 @@ const App2 = () => (
         <button
             onClick={() => {
                 change.normal = !change.normal;
-                React.update();
+                update();
             }}
         >
             测试节点替换——普通节点
@@ -82,7 +94,7 @@ const App2 = () => (
         <button
             onClick={() => {
                 change.fun = !change.fun;
-                React.update();
+                update();
             }}
         
         >
@@ -92,8 +104,7 @@ const App2 = () => (
             change.fun ? <FCom a={a} /> : <App1 a={a} />
         }
         hasDOMBUG
-        {false}
-        {null}强强强强
+        强强强强
     </div>
-)
+)}
 export default App2;
