@@ -45,7 +45,7 @@ export function diffNode(fiber: IFiberNode, changeQueue: IChangeRecordNode[], de
                 changeQueue.push({
                     fiber,
                     effectType: EFiberEffectType.changePosition,
-                    preFiber: typeof fiber.parent?.type === 'function' ? fiber.
+                    preFiber
                 });
             }
             getFiberUpdatePropsRecords(fiber, changeQueue, oldFiber);
