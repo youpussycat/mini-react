@@ -56,6 +56,7 @@ export function diffNode(fiber: IFiberNode, changeQueue: IChangeRecordNode[], de
             // 原来的 dom 节点得替换成新生成的节点。
             if (typeof fiber.type === 'string')
                 fiber.dom = createNode(fiber.type);
+            else fiber.effectType = EFiberEffectType.replaceDom
             changeQueue.push({
                 fiber,
                 effectType: EFiberEffectType.replaceDom,
@@ -64,7 +65,7 @@ export function diffNode(fiber: IFiberNode, changeQueue: IChangeRecordNode[], de
             getFiberUpdatePropsRecords(fiber, changeQueue)
             if (oldFiber) { // 节点重新创建，原来的节点就应该删除
                 deleteQueue.push({
-                    fiber: oldFiber,
+                    fiber: typeof oldFiber.type === 'function' ? oldFiber.child : oldFiber,
                     effectType: EFiberEffectType.delete
                 });
             }

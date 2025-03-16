@@ -388,18 +388,20 @@ function commitRoot(fiber?: IFiberNode | null) {
  * @param prevFiber 前一个 fiber 节点
  */
 function commitPlacement(fiber: IFiberNode, prevFiber?: IFiberNode | null) {
+    const { dom, parent, fatherHasDom } = fiber || {};
     // 之前在进行 fiber 节点生成的时候若是没dom会生成 dom 
-    if (!fiber.dom) return;
-
-    const parentDom = fiber.fatherHasDom?.dom;
+    if (!dom) return;
+    let preF = prevFiber;
+    const parentDom = fatherHasDom?.dom;
     if (!parentDom) return;
-    if (typeof fiber.parent?.type === 'function') debugger
-    const referenceNode = findReferenceNode(prevFiber);
+    if (typeof parent?.type === 'function' && parent.effectType === EFiberEffectType.replaceDom) 
+        preF = parent.preFiber;
+    const referenceNode = findReferenceNode(preF);
 
     if (referenceNode) {
-        parentDom.insertBefore(fiber.dom, referenceNode);
+        parentDom.insertBefore(dom, referenceNode);
     } else {
-        parentDom.appendChild(fiber.dom);
+        parentDom.appendChild(dom);
     }
 
 }
